@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StockPilot — Inventory Dashboard</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+<div class="noise"></div>
+
+<aside class="sidebar">
+  <div class="brand">
+    <span class="brand-icon">◈</span>
+    <span class="brand-name">StockPilot</span>
+  </div>
+  <nav class="nav">
+    <a href="#dashboard" class="nav-item active">Dashboard</a>
+    <a href="#inventory" class="nav-item">Inventory</a>
+    <a href="#alerts" class="nav-item">
+      Alerts
+      {% if low_stock_count > 0 %}
+      <span class="badge">{{ low_stock_count }}</span>
+      {% endif %}
+    </a>
+  </nav>
+  <div class="sidebar-footer">May 2026</div>
+</aside>
+
+<main class="main">
+  <header class="topbar">
+    <div class="topbar-title">
+      <h1>Inventory Control</h1>
+      <span class="subtitle">Real-time stock management</span>
+    </div>
+    <button class="btn-add" onclick="openModal()">+ New Product</button>
+  </header>
+
+  <section class="stats-grid" id="dashboard">
+    <div class="stat-card stat-total">
+      <div class="stat-label">Total Products</div>
+      <div class="stat-value">{{ total }}</div>
+      <div class="stat-sub">SKUs tracked</div>
+    </div>
+    <div class="stat-card stat-value-card">
+      <div class="stat-label">Inventory Value</div>
+      <div class="stat-value">${{ "%.2f"|format(total_value) }}</div>
+      <div class="stat-sub">estimated worth</div>
+    </div>
+    <div class="stat-card {% if low_stock_count > 0 %}stat-alert{% else %}stat-good{% endif %}">
+      <div class="stat-label">Low Stock Alerts</div>
+      <div class="stat-value">{{ low_stock_count }}</div>
+      <div class="stat-sub">need restocking</div>
+    </div>
+    <div class="stat-card stat-cat">
+      <div class="stat-label">Categories</div>
+      <div class="stat-value">{{ categories|length }}</div>
+      <div class="stat-sub">product groups</div>
+    </div>
+  </section>
+
+  {% if low_stock %}
+  <section class="alert-bar" id="alerts">
+    <div class="alert-header">⚠ Low Stock Items</div>
+    <div class="alert-pills">
+      {% for p in low_stock %}
+      <span class="alert-pill">{{ p.name }} — <strong>{{ p.quantity }}</strong> left</span>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="table-section" id="inventory">
+    <div class="table-header">
+      <h2>All Products</h2>
+      <input type="text" id="searchInput" class="search-input" placeholder="Search products..." oninput="filterTable()">
+    </div>
+
+    <div class="table-wrap">
+      <table class="inventory-table" id="inventoryTable">
+        <thead>
+          <tr>
+            <th>Product</th>
+            <th>Category</th>
+            <th>Qty</th>
+            <th>Unit Price</th>
+            <th>Total Value</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in products %}
+          <tr class="{% if p.quantity <= p.low_stock_threshold %}row-low{% endif %}">
+            <td class="td-name">{{ p.name }}</td>
+            <td><span class="cat-tag">{{ p.category }}</span></td>
+            <td class="td-qty {% if p.quantity <= p.low_stock_threshold %}qty-low{% endif %}">{{ p.quantity }}</td>
+            <td>${{ "%.2f"|format(p.unit_price) }}</td>
+            <td>${{ "%.2f"|format(p.quantity * p.unit_price) }}</td>
+            <td>
+              {% if p.quantity == 0 %}
+              <span class="status out">Out of Stock</span>
+              {% elif p.quantity <= p.low_stock_threshold %}
+              <span class="status low">Low Stock</span>
+              {% else %}
+              <span class="status ok">In Stock</span>
+              {% endif %}
+            </td>
+            <td class="td-actions">
+              <a href="/edit/{{ p.id }}" class="btn-edit">Edit</a>
+              <form method="POST" action="/delete/{{ p.id }}" onsubmit="return confirm('Delete {{ p.name }}?')" style="display:inline">
+                <button type="submit" class="btn-del">Delete</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<div class="modal-overlay" id="modalOverlay" onclick="closeModal()">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h3>Add New Product</h3>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <form method="POST" action="/add" class="modal-form">
+      <div class="form-row">
+        <label>Product Name</label>
+        <input type="text" name="name" required placeholder="e.g. USB-C Cable">
+      </div>
+      <div class="form-row">
+        <label>Category</label>
+        <input type="text" name="category" required placeholder="e.g. Electronics" list="cat-list">
+        <datalist id="cat-list">
+          {% for c in categories %}<option value="{{ c }}">{% endfor %}
+        </datalist>
+      </div>
+      <div class="form-row two-col">
+        <div>
+          <label>Quantity</label>
+          <input type="number" name="quantity" required min="0" placeholder="0">
+        </div>
+        <div>
+          <label>Unit Price ($)</label>
+          <input type="number" name="unit_price" required min="0" step="0.01" placeholder="0.00">
+        </div>
+      </div>
+      <div class="form-row">
+        <label>Low Stock Threshold</label>
+        <input type="number" name="low_stock_threshold" value="10" min="0">
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn-cancel" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn-submit">Add Product</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
